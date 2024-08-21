@@ -1,0 +1,16 @@
+package runner;
+
+import utilities.ExcelUtils;
+
+public class MainRunner {
+    public static void main(String[] args) {
+        ExcelUtils excelUtils = new ExcelUtils();
+
+        try {
+            excelUtils.filterExcelByTruck("example of report.xlsx","Sheet 1", "output.xlsx", "Truck 777");
+            excelUtils.generateReport("output.xlsx");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+}
