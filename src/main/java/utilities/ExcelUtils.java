@@ -70,22 +70,7 @@ public class ExcelUtils {
                         Row outputRow = outputSheet.createRow(outputRowIndex++);
                         for (Cell cell : row) {
                             Cell newCell = outputRow.createCell(cell.getColumnIndex());
-                            switch (cell.getCellType()) {
-                                case STRING:
-                                    newCell.setCellValue(cell.getStringCellValue());
-                                    break;
-                                case NUMERIC:
-                                    newCell.setCellValue(cell.getNumericCellValue());
-                                    break;
-                                case BOOLEAN:
-                                    newCell.setCellValue(cell.getBooleanCellValue());
-                                    break;
-                                case FORMULA:
-                                    newCell.setCellFormula(cell.getCellFormula());
-                                    break;
-                                default:
-                                    break;
-                            }
+                            copyCellValueAndStyle(cell, newCell, outputWorkbook);
                         }
                     }
                 }
@@ -103,6 +88,40 @@ public class ExcelUtils {
         }
     }
 
+    private void copyCellValueAndStyle(Cell sourceCell, Cell targetCell, XSSFWorkbook outputWorkbook) {
+        switch (sourceCell.getCellType()) {
+            case STRING:
+                targetCell.setCellValue(sourceCell.getStringCellValue());
+                break;
+            case NUMERIC:
+                // Check if the cell contains a date value
+                if (DateUtil.isCellDateFormatted(sourceCell)) {
+                    targetCell.setCellValue(sourceCell.getDateCellValue());
+                } else {
+                    // Copy the numeric value
+                    targetCell.setCellValue(sourceCell.getNumericCellValue());
+                }
+                break;
+            case BOOLEAN:
+                // Copy the boolean value
+                targetCell.setCellValue(sourceCell.getBooleanCellValue());
+                break;
+            case FORMULA:
+                // Copy the formula
+                targetCell.setCellFormula(sourceCell.getCellFormula());
+                break;
+            default:
+                break;
+        }
+
+        // Copy the cell style, including the number format
+        CellStyle newCellStyle = outputWorkbook.createCellStyle();
+        newCellStyle.cloneStyleFrom(sourceCell.getCellStyle());
+        targetCell.setCellStyle(newCellStyle);
+    }
+
+
+
     /**
      * Generate a report by calculating the sum of "Rate", "Gross Pay", and "Total" columns.
      * The output will be written to the same Excel file.
@@ -114,7 +133,6 @@ public class ExcelUtils {
      * @param filePath The path to the Excel file.
      */
     public void generateReport(String filePath) {
-        //Try catch block to handle exceptions
         try (FileInputStream fileInputStream = new FileInputStream(filePath);
              XSSFWorkbook workbook = new XSSFWorkbook(fileInputStream)) {
 
@@ -126,18 +144,17 @@ public class ExcelUtils {
             int rateColumnIndex = -1;
             int grossPayColumnIndex = -1;
             int totalColumnIndex = -1;
-            //Iterate through the header row to find the column indices of "Rate", "Gross Pay", and "Total"
             for (Cell cell : headerRow) {
                 String header = cell.getStringCellValue().trim();
-                if (header.equalsIgnoreCase("Rate")) {//if the header is "Rate" then set the rateColumnIndex to the index of the cell
+                if (header.equalsIgnoreCase("Rate")) {
                     rateColumnIndex = cell.getColumnIndex();
-                } else if (header.equalsIgnoreCase("Gross Pay")) {//if the header is "Gross Pay" then set the grossPayColumnIndex to the index of the cell
+                } else if (header.equalsIgnoreCase("Gross Pay")) {
                     grossPayColumnIndex = cell.getColumnIndex();
-                } else if (header.equalsIgnoreCase("Total")) {//if the header is "Total" then set the totalColumnIndex to the index of the cell
+                } else if (header.equalsIgnoreCase("Total")) {
                     totalColumnIndex = cell.getColumnIndex();
                 }
             }
-            //if any of the required columns are not found then print a message and return from the method
+
             if (rateColumnIndex == -1 || grossPayColumnIndex == -1 || totalColumnIndex == -1) {
                 System.out.println("Required column(s) not found.");
                 return;
@@ -148,20 +165,55 @@ public class ExcelUtils {
             double grossPaySum = 0;
             double totalSum = 0;
 
+            CellStyle rateCellStyle = null;
+            CellStyle grossPayCellStyle = null;
+            CellStyle totalCellStyle = null;
+
             for (int i = 1; i <= sheet.getLastRowNum(); i++) { // Start from 1 to skip the header row
                 Row row = sheet.getRow(i);
                 if (row != null) {
                     rateSum += getNumericCellValue(row, rateColumnIndex);
                     grossPaySum += getNumericCellValue(row, grossPayColumnIndex);
                     totalSum += getNumericCellValue(row, totalColumnIndex);
+
+                    // Store the first cell styles to use for the sum row
+                    //rateCellStyle is initially set to null when the variable is declared.
+                    //The if statement checks if rateCellStyle is still null.
+                    //The reason for this check is to ensure that the cell style is only
+                    // retrieved and stored once, specifically from the first non-header row that has a "Rate" value.
+                    if (rateCellStyle == null) {
+                        rateCellStyle = row.getCell(rateColumnIndex).getCellStyle();
+                    }
+                    if (grossPayCellStyle == null) {
+                        grossPayCellStyle = row.getCell(grossPayColumnIndex).getCellStyle();
+                    }
+                    if (totalCellStyle == null) {
+                        totalCellStyle = row.getCell(totalColumnIndex).getCellStyle();
+                    }
                 }
             }
 
             // Create a new row for the sums
             Row sumRow = sheet.createRow(sheet.getLastRowNum() + 1);
-            sumRow.createCell(rateColumnIndex).setCellValue(rateSum);
-            sumRow.createCell(grossPayColumnIndex).setCellValue(grossPaySum);
-            sumRow.createCell(totalColumnIndex).setCellValue(totalSum);
+
+            // Set the summed values and apply the copied cell styles
+            Cell rateSumCell = sumRow.createCell(rateColumnIndex);
+            rateSumCell.setCellValue(rateSum);
+            if (rateCellStyle != null) {
+                rateSumCell.setCellStyle(rateCellStyle);//set the cell style of the rateSumCell to the rateCellStyle
+            }
+
+            Cell grossPaySumCell = sumRow.createCell(grossPayColumnIndex);
+            grossPaySumCell.setCellValue(grossPaySum);
+            if (grossPayCellStyle != null) {
+                grossPaySumCell.setCellStyle(grossPayCellStyle);//set the cell style of the grossPaySumCell to the grossPayCellStyle
+            }
+
+            Cell totalSumCell = sumRow.createCell(totalColumnIndex);
+            totalSumCell.setCellValue(totalSum);
+            if (totalCellStyle != null) {
+                totalSumCell.setCellStyle(totalCellStyle);//set the cell style of the totalSumCell to the totalCellStyle
+            }
 
             // Write the output back to the same Excel file
             try (FileOutputStream fileOutputStream = new FileOutputStream(filePath)) {
