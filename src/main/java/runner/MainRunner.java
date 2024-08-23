@@ -7,7 +7,7 @@ public class MainRunner {
         ExcelUtils excelUtils = new ExcelUtils();
 
         try {
-            excelUtils.filterExcelByTruck("example of report.xlsx","Sheet1", "output.xlsx", "Truck #777");
+            excelUtils.filterExcelByTruck("example of report.xlsx","Sheet1", "output.xlsx", "Truck #001");
             excelUtils.generateReport("output.xlsx");
         } catch (Exception e) {
             e.printStackTrace();
