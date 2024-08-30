@@ -7,6 +7,10 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 
 public class ExcelUtils {
 
@@ -44,7 +48,7 @@ public class ExcelUtils {
             }
             //if the truckColumnIndex is still -1 then print a message and return from the method as the column is not found
             if (truckColumnIndex == -1) {
-                System.out.println("Truck column not found.");
+                System.out.println("Driver column not found.");
                 return;
             }
 
@@ -87,6 +91,7 @@ public class ExcelUtils {
             e.printStackTrace();
         }
     }
+
 
     private void copyCellValueAndStyle(Cell sourceCell, Cell targetCell, XSSFWorkbook outputWorkbook) {
         switch (sourceCell.getCellType()) {
@@ -132,21 +137,29 @@ public class ExcelUtils {
      * Finally, it will write the output back to the same Excel file.
      * @param filePath The path to the Excel file.
      */
-    public void generateReport(String filePath) {
+    public void generateReport(String filePath, String[] trucks) {
         try (FileInputStream fileInputStream = new FileInputStream(filePath);
              XSSFWorkbook workbook = new XSSFWorkbook(fileInputStream)) {
 
-            // Get the first sheet
+            // Get the "FilteredData" sheet
             XSSFSheet sheet = workbook.getSheet("FilteredData");
+            if (sheet == null) {
+                System.out.println("FilteredData sheet not found.");
+                return;
+            }
 
-            // Identify the column indices for "Rate", "Gross Pay", and "Total"
+            // Identify the column indices for "Truck", "Rate", "Gross Pay", and "Total"
             Row headerRow = sheet.getRow(0);
+            int truckColumnIndex = -1;
             int rateColumnIndex = -1;
             int grossPayColumnIndex = -1;
             int totalColumnIndex = -1;
+
             for (Cell cell : headerRow) {
                 String header = cell.getStringCellValue().trim();
-                if (header.equalsIgnoreCase("Rate")) {
+                if (header.equalsIgnoreCase("Truck")) {
+                    truckColumnIndex = cell.getColumnIndex();
+                } else if (header.equalsIgnoreCase("Rate")) {
                     rateColumnIndex = cell.getColumnIndex();
                 } else if (header.equalsIgnoreCase("Gross Pay")) {
                     grossPayColumnIndex = cell.getColumnIndex();
@@ -155,64 +168,55 @@ public class ExcelUtils {
                 }
             }
 
-            if (rateColumnIndex == -1 || grossPayColumnIndex == -1 || totalColumnIndex == -1) {
+            if (truckColumnIndex == -1 || rateColumnIndex == -1 || grossPayColumnIndex == -1 || totalColumnIndex == -1) {
                 System.out.println("Required column(s) not found.");
                 return;
             }
 
-            // Calculate sums for the "Rate", "Gross Pay", and "Total" columns
-            double rateSum = 0;
-            double grossPaySum = 0;
-            double totalSum = 0;
+            // Create a map to store sums for each truck
+            Map<String, Double> rateSums = new HashMap<>();
+            Map<String, Double> grossPaySums = new HashMap<>();
+            Map<String, Double> totalSums = new HashMap<>();
 
-            CellStyle rateCellStyle = null;
-            CellStyle grossPayCellStyle = null;
-            CellStyle totalCellStyle = null;
+            // Initialize sums for each truck
+            for (String truck : trucks) {
+                rateSums.put(truck, 0.0);
+                grossPaySums.put(truck, 0.0);
+                totalSums.put(truck, 0.0);
+            }
 
+            // Calculate sums for each truck
             for (int i = 1; i <= sheet.getLastRowNum(); i++) { // Start from 1 to skip the header row
                 Row row = sheet.getRow(i);
                 if (row != null) {
-                    rateSum += getNumericCellValue(row, rateColumnIndex);
-                    grossPaySum += getNumericCellValue(row, grossPayColumnIndex);
-                    totalSum += getNumericCellValue(row, totalColumnIndex);
-
-                    // Store the first cell styles to use for the sum row
-                    //rateCellStyle is initially set to null when the variable is declared.
-                    //The if statement checks if rateCellStyle is still null.
-                    //The reason for this check is to ensure that the cell style is only
-                    // retrieved and stored once, specifically from the first non-header row that has a "Rate" value.
-                    if (rateCellStyle == null) {
-                        rateCellStyle = row.getCell(rateColumnIndex).getCellStyle();
-                    }
-                    if (grossPayCellStyle == null) {
-                        grossPayCellStyle = row.getCell(grossPayColumnIndex).getCellStyle();
-                    }
-                    if (totalCellStyle == null) {
-                        totalCellStyle = row.getCell(totalColumnIndex).getCellStyle();
+                    Cell truckCell = row.getCell(truckColumnIndex);
+                    if (truckCell != null && truckCell.getCellType() == CellType.STRING) {
+                        String truckName = truckCell.getStringCellValue().trim();
+                        if (rateSums.containsKey(truckName)) {
+                            rateSums.put(truckName, rateSums.get(truckName) + getNumericCellValue(row, rateColumnIndex));
+                            grossPaySums.put(truckName, grossPaySums.get(truckName) + getNumericCellValue(row, grossPayColumnIndex));
+                            totalSums.put(truckName, totalSums.get(truckName) + getNumericCellValue(row, totalColumnIndex));
+                        }
                     }
                 }
             }
 
-            // Create a new row for the sums
-            Row sumRow = sheet.createRow(sheet.getLastRowNum() + 1);
+            // Write the sums to the last row for each truck
+            int sumRowStartIndex = sheet.getLastRowNum() + 2; // Leave a blank row after the last data row
+            for (String truck : trucks) {
+                Row sumRow = sheet.createRow(sumRowStartIndex++);
 
-            // Set the summed values and apply the copied cell styles
-            Cell rateSumCell = sumRow.createCell(rateColumnIndex);
-            rateSumCell.setCellValue(rateSum);
-            if (rateCellStyle != null) {
-                rateSumCell.setCellStyle(rateCellStyle);//set the cell style of the rateSumCell to the rateCellStyle
-            }
+                Cell truckNameCell = sumRow.createCell(0);
+                truckNameCell.setCellValue("Total for " + truck);
 
-            Cell grossPaySumCell = sumRow.createCell(grossPayColumnIndex);
-            grossPaySumCell.setCellValue(grossPaySum);
-            if (grossPayCellStyle != null) {
-                grossPaySumCell.setCellStyle(grossPayCellStyle);//set the cell style of the grossPaySumCell to the grossPayCellStyle
-            }
+                Cell rateSumCell = sumRow.createCell(rateColumnIndex);
+                rateSumCell.setCellValue(rateSums.get(truck));
 
-            Cell totalSumCell = sumRow.createCell(totalColumnIndex);
-            totalSumCell.setCellValue(totalSum);
-            if (totalCellStyle != null) {
-                totalSumCell.setCellStyle(totalCellStyle);//set the cell style of the totalSumCell to the totalCellStyle
+                Cell grossPaySumCell = sumRow.createCell(grossPayColumnIndex);
+                grossPaySumCell.setCellValue(grossPaySums.get(truck));
+
+                Cell totalSumCell = sumRow.createCell(totalColumnIndex);
+                totalSumCell.setCellValue(totalSums.get(truck));
             }
 
             // Write the output back to the same Excel file
@@ -220,12 +224,59 @@ public class ExcelUtils {
                 workbook.write(fileOutputStream);
             }
 
-            System.out.println("Sum of 'Rate', 'Gross Pay', and 'Total' columns has been added to the last row.");
+            System.out.println("Report generated with sums for each truck.");
 
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }    public String[] readTruckNamesFromExcel(String inputFilePath, String sheetName, String truckColumnHeader) {
+        try (FileInputStream fileInputStream = new FileInputStream(inputFilePath);
+             XSSFWorkbook workbook = new XSSFWorkbook(fileInputStream)) {
+
+            XSSFSheet sheet = workbook.getSheet(sheetName);
+            if (sheet == null) {
+                System.out.println("Sheet " + sheetName + " not found.");
+                return new String[0];
+            }
+
+            // Find the truck column index
+            Row headerRow = sheet.getRow(0);
+            int truckColumnIndex = -1;
+            for (Cell cell : headerRow) {
+                if (cell.getStringCellValue().equalsIgnoreCase(truckColumnHeader)) {
+                    truckColumnIndex = cell.getColumnIndex();
+                    break;
+                }
+            }
+
+            if (truckColumnIndex == -1) {
+                System.out.println("Truck column with header '" + truckColumnHeader + "' not found.");
+                return new String[0];
+            }
+
+            // Read the truck names
+            Set<String> truckNames = new HashSet<>();
+            for (int i = 1; i <= sheet.getLastRowNum(); i++) {
+                Row row = sheet.getRow(i);
+                if (row != null) {
+                    Cell truckCell = row.getCell(truckColumnIndex);
+                    if (truckCell != null && truckCell.getCellType() == CellType.STRING) {
+                        String truckName = truckCell.getStringCellValue().trim();
+                        if (!truckName.isEmpty()) {
+                            truckNames.add(truckName);
+                        }
+                    }
+                }
+            }
+
+            return truckNames.toArray(new String[0]);
+
+        } catch (IOException e) {
+            e.printStackTrace();
+            return new String[0];
+        }
     }
+
 
     private static double getNumericCellValue(Row row, int columnIndex) {
         Cell cell = row.getCell(columnIndex);

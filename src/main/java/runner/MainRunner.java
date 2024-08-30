@@ -7,8 +7,12 @@ public class MainRunner {
         ExcelUtils excelUtils = new ExcelUtils();
 
         try {
-            excelUtils.filterExcelByTruck("example of report.xlsx","Sheet1", "output.xlsx", "Truck #001");
-            excelUtils.generateReport("output.xlsx");
+            // Read truck names from the Excel file
+            String[] trucks = excelUtils.readTruckNamesFromExcel("newfile.xlsx", "Sheet1", "Truck");
+
+            // Filter by each truck and create a report
+            excelUtils.filterExcelByTruck("newfile.xlsx", "Sheet1", "output.xlsx", "Truck");
+            excelUtils.generateReport("output.xlsx", trucks );
         } catch (Exception e) {
             e.printStackTrace();
         }
